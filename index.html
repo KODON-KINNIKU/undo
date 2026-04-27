@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>インターバルタイマー</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui; }
+    body {
+      background: #000; color: #fff; height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .container {
+      width: min(480px, 100%); padding: 24px 20px 28px;
+      border-radius: 18px;
+      background: radial-gradient(circle at top, #333 0, #000 55%);
+      box-shadow: 0 0 40px #000a, 0 0 80px #000a;
+      border: 1px solid #fff2;
+    }
+    .header { display: flex; justify-content: space-between; margin-bottom: 12px; }
+    .title { font-size: 1.2rem; letter-spacing: .08em; }
+    .subtitle { font-size: .8rem; color: #aaa; }
+
+    .status-row {
+      display: flex; justify-content: space-between;
+      margin-bottom: 16px; font-size: .9rem; color: #ccc;
+    }
+    .status-label { font-size: .8rem; color: #888; }
+    .status-value { font-weight: 600; }
+
+    .phase-display {
+      position: relative; margin: 10px 0 18px; border-radius: 16px;
+      overflow: hidden; height: 160px; display: flex;
+      align-items: center; justify-content: center;
+      background: #111; box-shadow: inset 0 0 40px #000a;
+    }
+    .phase-bg { position: absolute; inset: 0; opacity: .9; transition: .3s; }
+    .prepare { background: radial-gradient(circle at top, #ffe066, #d4a500, #4d3b00); }
+    .work { background: radial-gradient(circle at top, #ff6b6b, #b00000, #300); }
+    .rest { background: radial-gradient(circle at top, #4dabff, #0050b3, #001a33); }
+
+    .phase-content { position: relative; text-align: center; z-index: 1; }
+    .phase-name { font-size: 1.1rem; margin-bottom: 6px; }
+    .time-main { font-size: 3.4rem; font-weight: 700; }
+
+    .progress-bar-wrapper { margin: 4px 2px 18px; }
+    .progress-label-row { display: flex; justify-content: space-between; font-size: .75rem; color: #aaa; }
+    .progress-bar {
+      height: 8px; border-radius: 999px;
+      background: linear-gradient(90deg, #222, #111); overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%; width: 0%; transition: width .1s linear;
+      background: linear-gradient(90deg, #ffb347, #ff6b6b);
+    }
+    .progress-fill.rest { background: linear-gradient(90deg, #7fd0ff, #4dabff); }
+    .progress-fill.prepare { background: linear-gradient(90deg, #ffe066, #ffcc00); }
+
+    .controls { display: flex; gap: 10px; margin-bottom: 10px; }
+    .btn {
+      flex: 1; border: none; border-radius: 999px; padding: 10px 0;
+      font-size: .95rem; font-weight: 600; cursor: pointer;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #ffb347, #ff6b6b); color: #111;
+    }
+    .btn-secondary { background: #222; color: #eee; }
+
+    .footer { display: flex; justify-content: space-between; font-size: .75rem; color: #777; }
+    .accent { color: #ffb347; }
+    .accent-blue { color: #4dabff; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div>
+        <div class="title">Interval Timer</div>
+        <div class="subtitle">準備5秒 → 20秒ワーク / 10秒レスト × 12回</div>
+      </div>
+      <div class="subtitle">合計 約6分5秒</div>
+    </div>
+
+    <div class="status-row">
+      <div><div class="status-label">回数</div><div class="status-value" id="setInfo">準備中</div></div>
+      <div><div class="status-label">経過</div><div class="status-value" id="elapsedTime">00:00</div></div>
+      <div><div class="status-label">残り</div><div class="status-value" id="remainingTime">06:05</div></div>
+    </div>
+
+    <div class="phase-display">
+      <div class="phase-bg prepare" id="phaseBg"></div>
+      <div class="phase-content">
+        <div class="phase-name" id="phaseName">準備</div>
+        <div class="time-main" id="phaseTime">05</div>
+        <div class="time-sub" id="phaseSub">スタートの準備をしてください</div>
+      </div>
+    </div>
+
+    <div class="progress-bar-wrapper">
+      <div class="progress-label-row">
+        <span>フェーズ進行</span><span id="phaseProgressLabel">0%</span>
+      </div>
+      <div class="progress-bar"><div class="progress-fill prepare" id="phaseProgress"></div></div>
+    </div>
+
+    <div class="controls">
+      <button class="btn btn-primary" id="startBtn">スタート</button>
+      <button class="btn btn-secondary" id="resetBtn">リセット</button>
+    </div>
+
+    <div class="footer">
+      <span><span class="accent">赤</span>：ワーク20秒</span>
+      <span><span class="accent-blue">青</span>：レスト10秒</span>
+    </div>
+  </div>
+
+  <!-- ★音声ファイルを入れてください -->
+  <audio id="start.wav"></audio>
+  <audio id="start.wav"></audio>
+  <audio id="start.wav"></audio>
+  <audio id="c.wav"></audio>
+  <audio id="321.wav"></audio>
+
+  <script>
+    const PREPARE = 5, WORK = 20, REST = 10, TOTAL = 12;
+    const TOTAL_TIME = PREPARE + (WORK + REST) * TOTAL;
+
+    let current = -1; // ★準備フェーズ
+    let isWork = false;
+    let remain = PREPARE;
+    let elapsed = 0;
+    let timer = null;
+    let running = false;
+
+    const setInfo = document.getElementById("setInfo");
+    const elapsedEl = document.getElementById("elapsedTime");
+    const remainEl = document.getElementById("remainingTime");
+    const bg = document.getElementById("phaseBg");
+    const nameEl = document.getElementById("phaseName");
+    const timeEl = document.getElementById("phaseTime");
+    const subEl = document.getElementById("phaseSub");
+    const prog = document.getElementById("phaseProgress");
+    const progLabel = document.getElementById("phaseProgressLabel");
+    const startBtn = document.getElementById("startBtn");
+
+    const startSound = document.getElementById("startSound");
+    const restSound = document.getElementById("restSound");
+    const endSound = document.getElementById("endSound");
+    const clapSound = document.getElementById("clapSound");
+    const countSound = document.getElementById("countSound");
+
+    function fmt(s){return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");}
+
+    function updateUI(){
+      if(current<0){ setInfo.textContent="準備中"; }
+      else setInfo.textContent=current+" / "+TOTAL;
+
+      elapsedEl.textContent=fmt(elapsed);
+      remainEl.textContent=fmt(Math.max(TOTAL_TIME-elapsed,0));
+
+      if(current<0){
+        bg.className="phase-bg prepare";
+        nameEl.textContent="準備";
+        subEl.textContent="スタートの準備をしてください";
+      }else if(isWork){
+        bg.className="phase-bg work";
+        nameEl.textContent="ワーク";
+        subEl.textContent="しっかり動きましょう！";
+      }else{
+        bg.className="phase-bg rest";
+        nameEl.textContent="レスト";
+        subEl.textContent="呼吸を整えてください";
+      }
+
+      timeEl.textContent=String(remain).padStart(2,"0");
+
+      const total = current<0 ? PREPARE : isWork ? WORK : REST;
+      const p = ((total-remain)/total)*100;
+      prog.style.width=p+"%";
+      prog.className="progress-fill "+(current<0?"prepare":isWork?"":"rest");
+      progLabel.textContent=Math.round(p)+"%";
+    }
+
+    function nextPhase(){
+      if(current<0){
+        current=0; isWork=true; remain=WORK;
+        try{startSound.play();}catch(e){}
+        updateUI(); return;
+      }
+
+      if(isWork){
+        isWork=false; remain=REST;
+        try{restSound.play();}catch(e){}
+      }else{
+        current++;
+        if(current>=TOTAL){
+          clearInterval(timer); running=false;
+          nameEl.textContent="完了！"; timeEl.textContent="00";
+          subEl.textContent="おつかれさまでした";
+          try{endSound.play();}catch(e){}
+          return;
+        }
+        isWork=true; remain=WORK;
+        try{startSound.play();}catch(e){}
+      }
+      updateUI();
+    }
+
+    function tick(){
+      remain--; elapsed++;
+
+      // ★全フェーズ 3・2・1 カウント音
+      if(remain===3||remain===2||remain===1){
+        try{countSound.play();}catch(e){}
+      }
+
+      // ★3回目ワークだけ 6秒ごと clap
+      if(current>=0 && isWork){
+        const roundInSet = (current % 4) + 1;
+        const workElapsed = WORK - remain;
+        if(roundInSet===3 && workElapsed>0 && workElapsed%6===0){
+          try{clapSound.play();}catch(e){}
+        }
+      }
+
+      if(remain<=0) nextPhase();
+      else updateUI();
+    }
+
+    function start(){
+      if(running) return;
+      running=true;
+
+      // ★準備フェーズを確実に開始
+      if(current===-1 && remain===PREPARE){
+        updateUI();
+      }
+
+      startBtn.textContent="一時停止";
+      startBtn.classList.remove("btn-primary");
+      startBtn.classList.add("btn-secondary");
+
+      timer=setInterval(tick,1000);
+    }
+
+    function pause(){
+      running=false;
+      clearInterval(timer);
+      startBtn.textContent="再開";
+      startBtn.classList.add("btn-primary");
+      startBtn.classList.remove("btn-secondary");
+    }
+
+    function reset(){
+      running=false;
+      clearInterval(timer);
+      current=-1; isWork=false; remain=PREPARE; elapsed=0;
+      startBtn.textContent="スタート";
+      startBtn.classList.add("btn-primary");
+      startBtn.classList.remove("btn-secondary");
+      updateUI();
+    }
+
+    startBtn.onclick=()=>running?pause():start();
+    document.getElementById("resetBtn").onclick=reset;
+
+    updateUI();
+  </script>
+</body>
+</html>
